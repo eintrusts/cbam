@@ -1,4 +1,4 @@
-# ---------------------- CBAM Executive Dashboard - Crash-Proof ----------------------
+# ---------------------- CBAM Executive Dashboard - Fully Crash-Proof ----------------------
 import sys
 import streamlit as st
 
@@ -66,6 +66,8 @@ if product_entries:
     df_products = pd.DataFrame(product_entries)
     st.subheader("Products in Shipment")
     st.dataframe(df_products)
+else:
+    st.warning("No products added yet. Please add at least one product to proceed.")
 
 # ---------------------- Quick Scenario Templates ----------------------
 st.header("3. Quick Scenario Templates")
@@ -108,42 +110,57 @@ all_scenarios = template_scenarios + custom_scenarios
 # ---------------------- Calculations ----------------------
 st.header("5. CBAM Calculation & Analysis")
 detailed_results = []
-for scenario in all_scenarios:
-    for p in product_entries:
-        scope1 = p["Quantity"] * p["Emission Factor"] * (1 - scenario["Efficiency %"]/100)
-        scope2 = p["Electricity Used"] * 0.7 * (1 - scenario["Solar %"]/100)
-        total_emissions = scope1 + scope2
-        cbam_fee = total_emissions * max(eu_ets_price - local_carbon_price, 0)
-        net_savings = cbam_fee - scenario["Investment Cost (€)"]
-        detailed_results.append({
-            "Scenario": scenario["Scenario"],
-            "Product": p["Product"],
-            "Quantity": p["Quantity"],
-            "Scope 1 (tCO₂)": round(scope1,2),
-            "Scope 2 (tCO₂)": round(scope2,2),
-            "Total Emissions (tCO₂)": round(total_emissions,2),
-            "Estimated CBAM Fee (€)": round(cbam_fee,2),
-            "Investment (€)": scenario["Investment Cost (€)"],
-            "Net Savings (€)": round(net_savings,2)
-        })
+
+if product_entries and all_scenarios:
+    for scenario in all_scenarios:
+        for p in product_entries:
+            scope1 = p["Quantity"] * p["Emission Factor"] * (1 - scenario["Efficiency %"]/100)
+            scope2 = p["Electricity Used"] * 0.7 * (1 - scenario["Solar %"]/100)
+            total_emissions = scope1 + scope2
+            cbam_fee = total_emissions * max(eu_ets_price - local_carbon_price, 0)
+            net_savings = cbam_fee - scenario["Investment Cost (€)"]
+            detailed_results.append({
+                "Scenario": scenario["Scenario"],
+                "Product": p["Product"],
+                "Quantity": p["Quantity"],
+                "Scope 1 (tCO₂)": round(scope1,2),
+                "Scope 2 (tCO₂)": round(scope2,2),
+                "Total Emissions (tCO₂)": round(total_emissions,2),
+                "Estimated CBAM Fee (€)": round(cbam_fee,2),
+                "Investment (€)": scenario["Investment Cost (€)"],
+                "Net Savings (€)": round(net_savings,2)
+            })
 
 df_detailed = pd.DataFrame(detailed_results)
-st.subheader("Per-Product & Scenario Details")
-st.dataframe(df_detailed)
 
-# Summary per scenario
-df_summary = df_detailed.groupby("Scenario")[["Total Emissions (tCO₂)","Estimated CBAM Fee (€)","Net Savings (€)"]].sum().reset_index()
-st.subheader("Scenario Summary")
-st.dataframe(df_summary)
+if not df_detailed.empty:
+    st.subheader("Per-Product & Scenario Details")
+    st.dataframe(df_detailed)
+else:
+    st.warning("No calculation results. Add products and/or scenarios to see analysis.")
 
-# ---------------------- Interactive Charts ----------------------
-st.subheader("Charts")
-fig_emissions = px.bar(df_summary, x="Scenario", y="Total Emissions (tCO₂)", title="Total Emissions per Scenario")
-st.plotly_chart(fig_emissions, use_container_width=True)
-fig_fee = px.bar(df_summary, x="Scenario", y="Estimated CBAM Fee (€)", title="Estimated CBAM Fee per Scenario")
-st.plotly_chart(fig_fee, use_container_width=True)
-fig_savings = px.bar(df_summary, x="Scenario", y="Net Savings (€)", title="Net Savings per Scenario")
-st.plotly_chart(fig_savings, use_container_width=True)
+# ---------------------- Summary per scenario ----------------------
+required_cols = ["Scenario","Total Emissions (tCO₂)","Estimated CBAM Fee (€)","Net Savings (€)"]
+if not df_detailed.empty:
+    missing_cols = [c for c in required_cols if c not in df_detailed.columns]
+    if missing_cols:
+        st.error(f"Missing columns in calculation: {missing_cols}")
+        st.stop()
+    df_summary = df_detailed.groupby("Scenario")[["Total Emissions (tCO₂)","Estimated CBAM Fee (€)","Net Savings (€)"]].sum().reset_index()
+    st.subheader("Scenario Summary")
+    st.dataframe(df_summary)
+else:
+    df_summary = pd.DataFrame()
+
+# ---------------------- Charts ----------------------
+if not df_summary.empty:
+    st.subheader("Charts")
+    fig_emissions = px.bar(df_summary, x="Scenario", y="Total Emissions (tCO₂)", title="Total Emissions per Scenario")
+    st.plotly_chart(fig_emissions, use_container_width=True)
+    fig_fee = px.bar(df_summary, x="Scenario", y="Estimated CBAM Fee (€)", title="Estimated CBAM Fee per Scenario")
+    st.plotly_chart(fig_fee, use_container_width=True)
+    fig_savings = px.bar(df_summary, x="Scenario", y="Net Savings (€)", title="Net Savings per Scenario")
+    st.plotly_chart(fig_savings, use_container_width=True)
 
 # ---------------------- One-Click Recommendation ----------------------
 st.header("6. One-Click Recommendation")
@@ -157,33 +174,36 @@ if not df_summary.empty:
     """)
     st.markdown("This scenario provides the **maximum cost benefit** considering CBAM fees and reduction investments.")
 else:
-    st.info("Add at least one product to generate recommendation.")
+    st.info("Add at least one product and one scenario to generate a recommendation.")
 
 # ---------------------- CSV Download ----------------------
-st.subheader("Download CSV Report")
-csv = df_detailed.to_csv(index=False).encode('utf-8')
-st.download_button(label="Download Detailed CSV", data=csv, file_name='cbam_detailed.csv', mime='text/csv')
+if not df_detailed.empty:
+    st.subheader("Download CSV Report")
+    csv = df_detailed.to_csv(index=False).encode('utf-8')
+    st.download_button(label="Download Detailed CSV", data=csv, file_name='cbam_detailed.csv', mime='text/csv')
 
 # ---------------------- PDF Download ----------------------
-st.subheader("Download PDF Report")
-html_file = "cbam_report.html"
-with open(html_file, "w") as f:
-    f.write("<h1>CBAM Report for Indian Exporters</h1>")
-    f.write("<h2>Per-Product & Scenario Details</h2>")
-    f.write(df_detailed.to_html(index=False))
-    f.write("<h2>Scenario Summary</h2>")
-    f.write(df_summary.to_html(index=False))
-    if not df_summary.empty:
-        f.write(f"<h2>Recommended Strategy: {best_scenario['Scenario']}</h2>")
-        f.write(f"<p>Total Emissions: {best_scenario['Total Emissions (tCO₂)']} tCO₂</p>")
-        f.write(f"<p>Estimated CBAM Fee: €{best_scenario['Estimated CBAM Fee (€)']}</p>")
-        f.write(f"<p>Net Savings: €{best_scenario['Net Savings (€)']}</p>")
-pdf_file = "cbam_report.pdf"
-try:
-    pdfkit.from_file(html_file, pdf_file)
-    with open(pdf_file, "rb") as f:
-        pdf_bytes = f.read()
-    b64 = base64.b64encode(pdf_bytes).decode()
-    st.markdown(f'<a href="data:application/octet-stream;base64,{b64}" download="cbam_report.pdf">Download PDF Report</a>', unsafe_allow_html=True)
-except:
-    st.warning("PDF generation failed. Ensure wkhtmltopdf is installed or use CSV download.")
+if not df_detailed.empty:
+    st.subheader("Download PDF Report")
+    import base64
+    html_file = "cbam_report.html"
+    with open(html_file, "w") as f:
+        f.write("<h1>CBAM Report for Indian Exporters</h1>")
+        f.write("<h2>Per-Product & Scenario Details</h2>")
+        f.write(df_detailed.to_html(index=False))
+        f.write("<h2>Scenario Summary</h2>")
+        f.write(df_summary.to_html(index=False))
+        if not df_summary.empty:
+            f.write(f"<h2>Recommended Strategy: {best_scenario['Scenario']}</h2>")
+            f.write(f"<p>Total Emissions: {best_scenario['Total Emissions (tCO₂)']} tCO₂</p>")
+            f.write(f"<p>Estimated CBAM Fee: €{best_scenario['Estimated CBAM Fee (€)']}</p>")
+            f.write(f"<p>Net Savings: €{best_scenario['Net Savings (€)']}</p>")
+    pdf_file = "cbam_report.pdf"
+    try:
+        pdfkit.from_file(html_file, pdf_file)
+        with open(pdf_file, "rb") as f:
+            pdf_bytes = f.read()
+        b64 = base64.b64encode(pdf_bytes).decode()
+        st.markdown(f'<a href="data:application/octet-stream;base64,{b64}" download="cbam_report.pdf">Download PDF Report</a>', unsafe_allow_html=True)
+    except:
+        st.warning("PDF generation failed. Ensure wkhtmltopdf is installed or use CSV download.")
