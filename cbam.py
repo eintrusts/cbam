@@ -1,10 +1,20 @@
-# ---------------------- CBAM Executive Dashboard - Turnkey ----------------------
+# ---------------------- CBAM Executive Dashboard - Crash-Proof ----------------------
+import sys
 import streamlit as st
-import pandas as pd
-import plotly.express as px
-import requests
-import pdfkit
-import base64
+
+# ---------------------- Safe Imports ----------------------
+def import_or_alert(module_name, package_name=None):
+    try:
+        return __import__(module_name)
+    except ModuleNotFoundError:
+        pkg = package_name if package_name else module_name
+        st.error(f"Module '{module_name}' is not installed. Please install it using:\n```\npip install {pkg}\n```")
+        st.stop()
+
+pd = import_or_alert("pandas")
+px = import_or_alert("plotly.express", "plotly")
+requests = import_or_alert("requests")
+pdfkit = import_or_alert("pdfkit")
 
 # ---------------------- App Config ----------------------
 st.set_page_config(page_title="CBAM Executive Dashboard", layout="wide")
