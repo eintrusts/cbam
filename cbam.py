@@ -1,4 +1,4 @@
-# ---------------------- CBAM Executive Dashboard - Fully Crash-Proof ----------------------
+# ---------------------- CBAM Executive Dashboard - Final Version ----------------------
 import sys
 import streamlit as st
 
@@ -8,13 +8,25 @@ def import_or_alert(module_name, package_name=None):
         return __import__(module_name)
     except ModuleNotFoundError:
         pkg = package_name if package_name else module_name
-        st.error(f"Module '{module_name}' is not installed. Please install it using:\n```\npip install {pkg}\n```")
+        st.error(f"Module '{module_name}' is not installed. Install via:\n```\npip install {pkg}\n```")
+        st.stop()
+    except AttributeError:
+        st.error(f"Module '{module_name}' is installed but incompatible. Upgrade via:\n```\npip install --upgrade {module_name}\n```")
         st.stop()
 
 pd = import_or_alert("pandas")
-px = import_or_alert("plotly.express", "plotly")
 requests = import_or_alert("requests")
 pdfkit = import_or_alert("pdfkit")
+
+# Plotly-safe import
+try:
+    import plotly.express as px
+except ModuleNotFoundError:
+    st.error("Module 'plotly' is missing. Install via `pip install plotly`")
+    st.stop()
+except AttributeError:
+    st.error("Plotly is installed but incompatible. Upgrade via `pip install --upgrade plotly`")
+    st.stop()
 
 # ---------------------- App Config ----------------------
 st.set_page_config(page_title="CBAM Executive Dashboard", layout="wide")
@@ -155,12 +167,15 @@ else:
 # ---------------------- Charts ----------------------
 if not df_summary.empty:
     st.subheader("Charts")
-    fig_emissions = px.bar(df_summary, x="Scenario", y="Total Emissions (tCO₂)", title="Total Emissions per Scenario")
-    st.plotly_chart(fig_emissions, use_container_width=True)
-    fig_fee = px.bar(df_summary, x="Scenario", y="Estimated CBAM Fee (€)", title="Estimated CBAM Fee per Scenario")
-    st.plotly_chart(fig_fee, use_container_width=True)
-    fig_savings = px.bar(df_summary, x="Scenario", y="Net Savings (€)", title="Net Savings per Scenario")
-    st.plotly_chart(fig_savings, use_container_width=True)
+    try:
+        fig_emissions = px.bar(df_summary, x="Scenario", y="Total Emissions (tCO₂)", title="Total Emissions per Scenario")
+        st.plotly_chart(fig_emissions, use_container_width=True)
+        fig_fee = px.bar(df_summary, x="Scenario", y="Estimated CBAM Fee (€)", title="Estimated CBAM Fee per Scenario")
+        st.plotly_chart(fig_fee, use_container_width=True)
+        fig_savings = px.bar(df_summary, x="Scenario", y="Net Savings (€)", title="Net Savings per Scenario")
+        st.plotly_chart(fig_savings, use_container_width=True)
+    except AttributeError:
+        st.error("Plotly chart error. Ensure plotly>=5.18.0 is installed.")
 
 # ---------------------- One-Click Recommendation ----------------------
 st.header("6. One-Click Recommendation")
@@ -172,7 +187,6 @@ if not df_summary.empty:
     - **Estimated CBAM Fee:** €{best_scenario['Estimated CBAM Fee (€)']}  
     - **Net Savings after Investment:** €{best_scenario['Net Savings (€)']}  
     """)
-    st.markdown("This scenario provides the **maximum cost benefit** considering CBAM fees and reduction investments.")
 else:
     st.info("Add at least one product and one scenario to generate a recommendation.")
 
