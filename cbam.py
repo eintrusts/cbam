@@ -1,14 +1,12 @@
-# ---------------------- CBAM Dashboard with Multiple Named Sessions ----------------------
+# ---------------------- CBAM Dashboard without st_aggrid ----------------------
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
-import os
 
-st.set_page_config(page_title="CBAM Dashboard - Named Sessions", layout="wide")
+st.set_page_config(page_title="CBAM Dashboard - Native Inputs", layout="wide")
 st.title("CBAM Dashboard for Indian Manufacturers")
 st.markdown("""
-Edit your product data in a table, calculate emissions, CBAM fees, scenarios, and save/load multiple named sessions.
+Add multiple products manually, calculate emissions, CBAM fees, and scenario-based reductions. No extra packages required.
 """)
 
 # ---------------------- Emission Factors ----------------------
@@ -23,49 +21,41 @@ emission_factors = {
 if "df_raw" not in st.session_state:
     st.session_state.df_raw = pd.DataFrame(columns=["Product","Quantity","Electricity","Fuel Type","Fuel Quantity",
                                                     "Purchased Materials","Transport Distance","Transport Mode"])
-if "sessions_dir" not in st.session_state:
-    st.session_state.sessions_dir = "sessions"
-    os.makedirs(st.session_state.sessions_dir, exist_ok=True)
 
-# ---------------------- Sidebar: Save/Load Named Sessions ----------------------
-st.sidebar.header("Save / Load Named Session")
+# ---------------------- Add / Edit Products ----------------------
+st.header("1. Product Data")
 
-# Save current session
-session_name = st.sidebar.text_input("Enter session name to save")
-if st.sidebar.button("Save Session"):
-    if session_name:
-        filename = os.path.join(st.session_state.sessions_dir, f"{session_name}.csv")
-        st.session_state.df_raw.to_csv(filename, index=False)
-        st.sidebar.success(f"Session saved as '{session_name}'")
-    else:
-        st.sidebar.error("Enter a valid session name to save.")
+with st.form("product_form", clear_on_submit=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        product = st.selectbox("Product", ["Steel","Cement","Aluminium","Fertilizer"])
+        qty = st.number_input("Quantity (t)", min_value=0.0, value=10.0)
+        elec = st.number_input("Electricity (MWh)", min_value=0.0, value=0.0)
+        fuel_type = st.selectbox("Fuel Type", ["None","Coal","Diesel","Natural Gas"])
+    with col2:
+        fuel_qty = st.number_input("Fuel Quantity", min_value=0.0, value=0.0)
+        purchased_materials = st.number_input("Purchased Materials (t)", min_value=0.0, value=0.0)
+        transport_distance = st.number_input("Transport Distance (km)", min_value=0.0, value=0.0)
+        transport_mode = st.selectbox("Transport Mode", ["Truck","Rail","Ship","Air"])
+    
+    submitted = st.form_submit_button("Add Product")
+    if submitted:
+        st.session_state.df_raw = pd.concat([st.session_state.df_raw,
+                                             pd.DataFrame([{
+                                                 "Product": product,
+                                                 "Quantity": qty,
+                                                 "Electricity": elec,
+                                                 "Fuel Type": fuel_type if fuel_type != "None" else "",
+                                                 "Fuel Quantity": fuel_qty,
+                                                 "Purchased Materials": purchased_materials,
+                                                 "Transport Distance": transport_distance,
+                                                 "Transport Mode": transport_mode
+                                             }])], ignore_index=True)
+        st.success(f"{product} added!")
 
-# Load existing session
-saved_files = [f for f in os.listdir(st.session_state.sessions_dir) if f.endswith(".csv")]
-session_to_load = st.sidebar.selectbox("Select session to load", ["--Select--"] + saved_files)
-if st.sidebar.button("Load Session"):
-    if session_to_load != "--Select--":
-        filename = os.path.join(st.session_state.sessions_dir, session_to_load)
-        st.session_state.df_raw = pd.read_csv(filename)
-        st.sidebar.success(f"Session '{session_to_load}' loaded successfully")
-    else:
-        st.sidebar.error("Select a session to load.")
-
-# ---------------------- Editable Table ----------------------
-st.header("1. Product Data Table")
-gb = GridOptionsBuilder.from_dataframe(st.session_state.df_raw)
-gb.configure_default_column(editable=True)
-gb.configure_column("Product", editable=True, cellEditor="agSelectCellEditor",
-                    cellEditorParams={"values":["Steel","Cement","Aluminium","Fertilizer"]})
-gb.configure_column("Fuel Type", editable=True, cellEditor="agSelectCellEditor",
-                    cellEditorParams={"values":["None","Coal","Diesel","Natural Gas"]})
-gb.configure_column("Transport Mode", editable=True, cellEditor="agSelectCellEditor",
-                    cellEditorParams={"values":["Truck","Rail","Ship","Air"]})
-grid_options = gb.build()
-grid_response = AgGrid(st.session_state.df_raw, gridOptions=grid_options, editable=True,
-                       update_mode=GridUpdateMode.MODEL_CHANGED, height=300, fit_columns_on_grid_load=True)
-df_raw = grid_response["data"]
-st.session_state.df_raw = df_raw
+# Display table
+st.subheader("Current Product List")
+st.dataframe(st.session_state.df_raw)
 
 # ---------------------- Carbon Prices ----------------------
 st.header("2. Carbon Prices")
@@ -86,6 +76,7 @@ for t in selected_templates:
 
 # ---------------------- Calculation ----------------------
 st.header("4. Calculate Emissions & CBAM Fee")
+df_raw = st.session_state.df_raw
 if df_raw.empty:
     st.warning("Add at least one product to calculate.")
 else:
